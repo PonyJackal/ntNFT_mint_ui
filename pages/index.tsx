@@ -28,60 +28,16 @@ const Home = () => {
   const ntNFTContract = useNTNFTContract();
   const {data: tokenBalance} = useNTNFTBalance(account);
 
-  console.log(tokenBalance);
-
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [minting, setMinting] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [mintErrorMessage, setMintErrorMessage] = useState("");
+  const [transferErrorMessage, setTransferErrorMessage] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [accountDetails, setAccountDetails] = useState({
-    ogQuantity: 0,
-    gameKeyQuantity: 0,
-    wlQuantity: 0,
-  });
+  const [toAddress, setToAddress] = useState("");
+  const [tokenIdToTransfer, setTokenIdToTransfer] = useState();
 
   const isConnected = typeof account === "string" && !!library;
-
-  useEffect(() => {
-    fetchAccountDetails(account);
-  }, [account]);
-
-  const fetchAccountDetails = async (address: string) => {
-    const result = await fetch("/api/getQuantity", {
-      method: "POST",
-      body: JSON.stringify({
-        address,
-      }),
-    });
-    const res = await result.json();
-
-    if (res) {
-      const quantities = res.data.result;
-      setAccountDetails({
-        ...accountDetails,
-        ...quantities,
-      });
-    }
-  };
-
-  const generateMerkleProofs = async (type, address: string, amount) => {
-    const result = await fetch("/api/generateMerkleProof", {
-      method: "POST",
-      body: JSON.stringify({
-        type,
-        address,
-        amount,
-      }),
-    });
-    const res = await result.json();
-
-    if (res) {
-      const merkleProof = res.data.result;
-
-      return merkleProof;
-    }
-    return [];
-  };
 
   const handleMint = async () => {
     if (!account) {
@@ -89,8 +45,9 @@ const Home = () => {
     }
 
     try {
-      setLoading(true);
-      setErrorMessage("");
+      setMinting(true);
+      setMintErrorMessage("");
+      setTransferErrorMessage("");
 
       const tx = await ntNFTContract.mint(quantity);
 
@@ -98,21 +55,63 @@ const Home = () => {
       setConfirmed(true);
     } catch (e) {
       console.log("Mint error", e.message); // Save this to state
-      setErrorMessage(e.message);
+      setMintErrorMessage(e.message);
     } finally {
-      setLoading(false);
+      setMinting(false);
+    }
+  };
+
+  const handleAddressChange = (e) => {
+    setToAddress(e.target.value);
+  }
+
+  const handleTokenIdChange = (e) => {
+    setTokenIdToTransfer(e.target.value);
+  }
+
+  const handleTransfer = async () => {
+    if (!account) {
+      return;
+    }
+
+    try {
+      setTransferring(true);
+      setTransferErrorMessage("");
+      setMintErrorMessage("");
+
+      const tx = await ntNFTContract.transferFrom(account, toAddress, tokenIdToTransfer);
+
+      await tx.wait();
+      setConfirmed(true);
+    } catch (e) {
+      console.log("Transfer error", e.message); // Save this to state
+      setTransferErrorMessage(e.message);
+    } finally {
+      setTransferring(false);
     }
   };
 
   function setPriceQty(val) {
     const _qty = quantity + val;
-    console.log("_qty", _qty)
     setQuantity(_qty);
   }
 
-  const returnError = (msg) => {
+  const returnMintError = (msg) => {
     if (msg.includes("NTNFT: to address is not an admin"))
       return "You are not an administrator";
+    if (msg.includes("resolver or addr is not configured for ENS name"))
+      return "Invalid address";
+    if (msg.includes("invalid BigNumber string"))
+      return "Invalid token Id";
+    return "Something went wrong.";
+  };
+  const returnTransferError = (msg) => {
+    if (msg.includes("NTNFT: to address is not an admin"))
+      return "You are transferring a token to non-administrator";
+    if (msg.includes("resolver or addr is not configured for ENS name"))
+      return "Invalid address";
+    if (msg.includes("invalid BigNumber string"))
+      return "Invalid token Id";
     return "Something went wrong.";
   };
 
@@ -127,7 +126,7 @@ const Home = () => {
       <main>
         <div className="text-center">
           <h1 className="z-10 mb-24 mt-24 sm:mb-14 md:mb-8 text-hero-title-md sm:text-hero-title-md md:text-hero-title-lg">
-          Only administrators can mint tokens
+            Only administrators can mint tokens
           </h1>
         </div>
 
@@ -158,12 +157,37 @@ const Home = () => {
                 />
                 <Button
                   isPrimary={true}
-                  disabled={loading}
+                  disabled={minting}
                   clickHandler={handleMint}
                 >
-                  {loading ? "Minting..." : `MINT`}
+                  {minting ? "Minting..." : `Mint`}
                 </Button>
               </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center mt-8">
+                <input
+                  type="text"
+                  className="bg-woodsmoke-300 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 mr-0 mb-4 sm:mb-0 sm:mr-4"
+                  placeholder="To Address"
+                  value={toAddress}
+                  onChange={handleAddressChange}
+                />
+                <input
+                  type="text"
+                  className="bg-woodsmoke-300 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 mr-0 mb-4 sm:mb-0 sm:mr-4"
+                  placeholder="Token Id"
+                  value={tokenIdToTransfer}
+                  onChange={handleTokenIdChange}
+                />
+                <Button
+                  isPrimary={true}
+                  disabled={transferring}
+                  clickHandler={handleTransfer}
+                >
+                  {transferring ? "Transferring..." : `Transfer`}
+                </Button>
+              </div>
+
             </section>
           ) : (
             <Success address={NTNFT_ADDRESS} />
@@ -171,9 +195,16 @@ const Home = () => {
         </div>
 
         <div className="text-center mt-14">
-          {errorMessage ? (
+          {mintErrorMessage ? (
             <p className="mb-8 text-gp-red text-hero-desc-lg">
-              {returnError(errorMessage)}
+              {returnMintError(mintErrorMessage)}
+            </p>
+          ) : null}
+        </div>
+        <div className="text-center mt-14">
+          {transferErrorMessage ? (
+            <p className="mb-8 text-gp-red text-hero-desc-lg">
+              {returnTransferError(transferErrorMessage)}
             </p>
           ) : null}
         </div>
